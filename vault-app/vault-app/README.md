@@ -1,7 +1,7 @@
 # Vault — Money Management App
 
 ## Admin Login
-Password: `7087`
+Password: `vault2025`
 
 ## Setup & Deploy
 
