@@ -2,9 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
-const ADMIN_PASSWORD = 'vault2025'
+const ADMIN_PIN = '7057'
 
-// ─── ICONS ───────────────────────────────────────────────────────────────────
 const Icon = ({ d, size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d={d} />
@@ -20,19 +19,15 @@ const Icons = {
   logout: "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
   check: "M20 6L9 17l-5-5",
   trash: "M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6",
-  edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",
   arrow: "M5 12h14M12 5l7 7-7 7",
-  income: "M12 2v20M17 7H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6",
-  expense: "M17 7H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6M12 2v20",
   tag: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01",
-  eye: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8M12 9a3 3 0 110 6 3 3 0 010-6",
   user: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 110-8 4 4 0 010 8",
+  piggy: "M19 8a7 7 0 00-14 0c0 3.87 2.69 7.12 6.38 7.86L12 19l.62-3.14C16.31 15.12 19 11.87 19 8zM12 8v.01",
 }
 
 const fmt = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })
 
-// ─── MODAL ────────────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -47,102 +42,76 @@ function Modal({ title, onClose, children }) {
   )
 }
 
-// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+// LOGIN
 function LoginScreen({ onAdminLogin, onUserLogin }) {
   const [mode, setMode] = useState('choose')
-  const [pass, setPass] = useState('')
   const [pin, setPin] = useState('')
   const [err, setErr] = useState('')
-  const [people, setPeople] = useState([])
+  const [checking, setChecking] = useState(false)
 
   useEffect(() => {
-    supabase.from('people').select('id,name').then(({ data }) => setPeople(data || []))
-  }, [])
+    if (pin.length === 4 && !checking) {
+      setChecking(true)
+      if (mode === 'admin') {
+        if (pin === ADMIN_PIN) { onAdminLogin() }
+        else { setErr('Incorrect PIN'); setTimeout(() => { setPin(''); setErr(''); setChecking(false) }, 900) }
+      } else {
+        supabase.from('people').select('*').eq('pin', pin).single().then(({ data }) => {
+          if (data) { onUserLogin(data) }
+          else { setErr('Invalid PIN'); setTimeout(() => { setPin(''); setErr(''); setChecking(false) }, 900) }
+        })
+      }
+    }
+  }, [pin])
 
-  const handleAdmin = () => {
-    if (pass === ADMIN_PASSWORD) { onAdminLogin(); setErr('') }
-    else setErr('Incorrect password')
-  }
-
-  const handleUser = () => {
-    if (pin.length !== 4) { setErr('Enter 4-digit PIN'); return }
-    const found = people.find(p => p.pin === pin) 
-    // We'll check against DB
-    supabase.from('people').select('*').eq('pin', pin).single().then(({ data, error }) => {
-      if (data) { onUserLogin(data); setErr('') }
-      else setErr('Invalid PIN')
-    })
-  }
-
-  const addDigit = (d) => {
-    if (pin.length < 4) setPin(p => p + d)
-  }
+  const addDigit = (d) => { if (pin.length < 4 && !checking) setPin(p => p + d) }
+  const delDigit = () => { if (!checking) setPin(p => p.slice(0, -1)) }
 
   if (mode === 'choose') return (
     <div className="login-screen">
       <div className="login-logo">
-        <div className="logo-icon">V</div>
-        <h1>Vault</h1>
+        <div className="logo-icon">W</div>
+        <h1>Wallet</h1>
         <p>Secure money management</p>
       </div>
       <div className="login-choose">
-        <button className="btn-login-choice admin" onClick={() => setMode('admin')}>
-          <Icon d={Icons.wallet} size={22} />
-          <span>Admin Login</span>
-          <small>Full access</small>
+        <button className="btn-login-choice" onClick={() => { setMode('admin'); setPin(''); setErr('') }}>
+          <Icon d={Icons.wallet} size={24} />
+          <div><span>Admin Login</span><small>Full access</small></div>
         </button>
-        <button className="btn-login-choice user" onClick={() => setMode('user')}>
-          <Icon d={Icons.user} size={22} />
-          <span>View My Balance</span>
-          <small>Enter your PIN</small>
+        <button className="btn-login-choice" onClick={() => { setMode('user'); setPin(''); setErr('') }}>
+          <Icon d={Icons.user} size={24} />
+          <div><span>View My Balance</span><small>Enter your PIN</small></div>
         </button>
       </div>
     </div>
   )
 
-  if (mode === 'admin') return (
+  return (
     <div className="login-screen">
       <div className="login-logo">
-        <div className="logo-icon">V</div>
-        <h1>Admin Login</h1>
-      </div>
-      <div className="login-form">
-        <input type="password" placeholder="Enter admin password" value={pass}
-          onChange={e => setPass(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAdmin()}
-          className="login-input" />
-        {err && <div className="login-err">{err}</div>}
-        <button className="btn-primary full" onClick={handleAdmin}>Login</button>
-        <button className="btn-ghost" onClick={() => { setMode('choose'); setErr(''); setPass('') }}>← Back</button>
-      </div>
-    </div>
-  )
-
-  if (mode === 'user') return (
-    <div className="login-screen">
-      <div className="login-logo">
-        <div className="logo-icon">V</div>
-        <h1>Enter PIN</h1>
-        <p>4-digit PIN to view your balance</p>
+        <div className="logo-icon">W</div>
+        <h1>{mode === 'admin' ? 'Admin PIN' : 'Your PIN'}</h1>
+        <p>{mode === 'admin' ? 'Enter 4-digit admin PIN' : 'Enter your 4-digit PIN'}</p>
       </div>
       <div className="pin-dots">
-        {[0,1,2,3].map(i => <div key={i} className={`pin-dot ${pin.length > i ? 'filled' : ''}`} />)}
+        {[0,1,2,3].map(i => <div key={i} className={`pin-dot ${pin.length > i ? 'filled' : ''} ${err ? 'shake' : ''}`} />)}
       </div>
       {err && <div className="login-err">{err}</div>}
       <div className="numpad">
         {[1,2,3,4,5,6,7,8,9].map(n => (
           <button key={n} className="num-btn" onClick={() => addDigit(String(n))}>{n}</button>
         ))}
-        <button className="num-btn" onClick={() => setPin(p => p.slice(0,-1))}>⌫</button>
+        <button className="num-btn del" onClick={delDigit}>⌫</button>
         <button className="num-btn" onClick={() => addDigit('0')}>0</button>
-        <button className="num-btn confirm" onClick={handleUser}>✓</button>
+        <div className="num-btn empty-btn" />
       </div>
-      <button className="btn-ghost" style={{marginTop: '1rem'}} onClick={() => { setMode('choose'); setErr(''); setPin('') }}>← Back</button>
+      <button className="btn-ghost back-btn" onClick={() => { setMode('choose'); setErr(''); setPin('') }}>← Back</button>
     </div>
   )
 }
 
-// ─── USER VIEW ────────────────────────────────────────────────────────────────
+// USER VIEW
 function UserView({ user, onLogout }) {
   const [txns, setTxns] = useState([])
   const [loading, setLoading] = useState(true)
@@ -184,15 +153,21 @@ function UserView({ user, onLogout }) {
   )
 }
 
-// ─── ADMIN: DASHBOARD ─────────────────────────────────────────────────────────
-function Dashboard({ people, transactions, ledger, personalEntries }) {
+// DASHBOARD
+function Dashboard({ people, transactions, ledger, ledgerTxns, personalEntries }) {
   const totalWallet = people.reduce((sum, p) => {
-    const ptxns = transactions.filter(t => t.person_id === p.id)
-    return sum + ptxns.reduce((s, t) => t.type === 'deposit' ? s + Number(t.amount) : s - Number(t.amount), 0)
+    return sum + transactions.filter(t => t.person_id === p.id)
+      .reduce((s, t) => t.type === 'deposit' ? s + Number(t.amount) : s - Number(t.amount), 0)
   }, 0)
 
-  const totalOwe = ledger.filter(l => l.type === 'owe' && l.status === 'pending').reduce((s, l) => s + Number(l.amount), 0)
-  const totalOwed = ledger.filter(l => l.type === 'owed' && l.status === 'pending').reduce((s, l) => s + Number(l.amount), 0)
+  const getLedgerRemaining = (entry) => {
+    const txns = ledgerTxns.filter(lt => lt.ledger_id === entry.id)
+    const settled = txns.reduce((s, lt) => s + Number(lt.amount), 0)
+    return Math.max(0, Number(entry.amount) - settled)
+  }
+
+  const totalReceive = ledger.filter(l => l.type === 'owed' && l.status !== 'done').reduce((s, l) => s + getLedgerRemaining(l), 0)
+  const totalPay = ledger.filter(l => l.type === 'owe' && l.status !== 'done').reduce((s, l) => s + getLedgerRemaining(l), 0)
 
   const thisMonth = new Date()
   const monthEntries = personalEntries.filter(e => {
@@ -201,6 +176,9 @@ function Dashboard({ people, transactions, ledger, personalEntries }) {
   })
   const income = monthEntries.filter(e => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0)
   const expense = monthEntries.filter(e => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0)
+
+  const totalSaving = personalEntries.filter(e => e.type === 'income').reduce((s,e) => s + Number(e.amount), 0)
+    - personalEntries.filter(e => e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
 
   const recentTxns = [...transactions].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0,5)
 
@@ -212,20 +190,19 @@ function Dashboard({ people, transactions, ledger, personalEntries }) {
           <div className="stat-label">Total Wallet</div>
           <div className="stat-val">{fmt(totalWallet)}</div>
         </div>
-        <div className="stat-card danger">
-          <div className="stat-label">I Owe</div>
-          <div className="stat-val">{fmt(totalOwe)}</div>
-        </div>
         <div className="stat-card success">
-          <div className="stat-label">Owed to Me</div>
-          <div className="stat-val">{fmt(totalOwed)}</div>
+          <div className="stat-label">To Receive</div>
+          <div className="stat-val">{fmt(totalReceive)}</div>
+        </div>
+        <div className="stat-card danger">
+          <div className="stat-label">To Pay</div>
+          <div className="stat-val">{fmt(totalPay)}</div>
         </div>
         <div className="stat-card info">
           <div className="stat-label">Net This Month</div>
           <div className="stat-val">{fmt(income - expense)}</div>
         </div>
       </div>
-
       <h3 className="sub-title">Recent Transactions</h3>
       <div className="card">
         {recentTxns.length === 0 ? <div className="empty">No transactions yet</div> : recentTxns.map(t => {
@@ -246,7 +223,7 @@ function Dashboard({ people, transactions, ledger, personalEntries }) {
   )
 }
 
-// ─── ADMIN: WALLET ────────────────────────────────────────────────────────────
+// WALLET
 function Wallet({ people, transactions, onRefresh }) {
   const [selected, setSelected] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -256,26 +233,22 @@ function Wallet({ people, transactions, onRefresh }) {
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const getBalance = (personId) => {
-    return transactions.filter(t => t.person_id === personId)
-      .reduce((s, t) => t.type === 'deposit' ? s + Number(t.amount) : s - Number(t.amount), 0)
-  }
-
-  const getPersonTxns = (personId) => transactions.filter(t => t.person_id === personId)
-    .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+  const getBalance = (personId) => transactions.filter(t => t.person_id === personId)
+    .reduce((s, t) => t.type === 'deposit' ? s + Number(t.amount) : s - Number(t.amount), 0)
 
   const addPerson = async () => {
     if (!form.name.trim()) { setErr('Name required'); return }
     if (form.pin.length !== 4 || !/^\d+$/.test(form.pin)) { setErr('PIN must be 4 digits'); return }
-    const existing = await supabase.from('people').select('id').eq('pin', form.pin).single()
-    if (existing.data) { setErr('PIN already in use'); return }
+    if (form.pin === ADMIN_PIN) { setErr('This PIN is reserved for admin'); return }
+    const { data: existing } = await supabase.from('people').select('id').eq('pin', form.pin).single()
+    if (existing) { setErr('PIN already in use'); return }
     setLoading(true)
     await supabase.from('people').insert({ name: form.name.trim(), pin: form.pin })
     await onRefresh(); setShowAdd(false); setForm({ name: '', pin: '' }); setErr(''); setLoading(false)
   }
 
   const addTxn = async () => {
-    if (!txnForm.amount || isNaN(txnForm.amount) || Number(txnForm.amount) <= 0) { setErr('Valid amount required'); return }
+    if (!txnForm.amount || Number(txnForm.amount) <= 0) { setErr('Valid amount required'); return }
     setLoading(true)
     await supabase.from('transactions').insert({ person_id: selected.id, type: txnForm.type, amount: Number(txnForm.amount), note: txnForm.note })
     await onRefresh(); setShowTxn(false); setTxnForm({ type: 'deposit', amount: '', note: '' }); setErr(''); setLoading(false)
@@ -294,14 +267,14 @@ function Wallet({ people, transactions, onRefresh }) {
   }
 
   if (selected) {
-    const ptxns = getPersonTxns(selected.id)
+    const ptxns = [...transactions.filter(t => t.person_id === selected.id)].sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
     const bal = getBalance(selected.id)
     return (
       <div className="section">
         <button className="btn-back" onClick={() => setSelected(null)}>← Back to Wallet</button>
         <div className="person-header">
           <div className="person-avatar">{selected.name.charAt(0)}</div>
-          <div>
+          <div style={{flex:1}}>
             <h2>{selected.name}</h2>
             <div className="person-pin">PIN: {selected.pin}</div>
           </div>
@@ -331,19 +304,16 @@ function Wallet({ people, transactions, onRefresh }) {
         {showTxn && (
           <Modal title={txnForm.type === 'deposit' ? 'Add Deposit' : 'Add Withdrawal'} onClose={() => { setShowTxn(false); setErr('') }}>
             <div className="modal-body">
-              <div className="field">
-                <label>Type</label>
+              <div className="field"><label>Type</label>
                 <div className="toggle-row">
                   <button className={`toggle-btn ${txnForm.type === 'deposit' ? 'active' : ''}`} onClick={() => setTxnForm(f => ({...f, type:'deposit'}))}>Deposit</button>
                   <button className={`toggle-btn ${txnForm.type === 'withdraw' ? 'active danger' : ''}`} onClick={() => setTxnForm(f => ({...f, type:'withdraw'}))}>Withdraw</button>
                 </div>
               </div>
-              <div className="field">
-                <label>Amount (Rs)</label>
+              <div className="field"><label>Amount (Rs)</label>
                 <input type="number" placeholder="0" value={txnForm.amount} onChange={e => setTxnForm(f => ({...f, amount: e.target.value}))} />
               </div>
-              <div className="field">
-                <label>Note (optional)</label>
+              <div className="field"><label>Note (optional)</label>
                 <input type="text" placeholder="e.g. Monthly saving" value={txnForm.note} onChange={e => setTxnForm(f => ({...f, note: e.target.value}))} />
               </div>
               {err && <div className="form-err">{err}</div>}
@@ -377,16 +347,13 @@ function Wallet({ people, transactions, onRefresh }) {
           )
         })}
       </div>
-
       {showAdd && (
         <Modal title="Add New Person" onClose={() => { setShowAdd(false); setErr(''); setForm({ name: '', pin: '' }) }}>
           <div className="modal-body">
-            <div className="field">
-              <label>Full Name</label>
+            <div className="field"><label>Full Name</label>
               <input type="text" placeholder="e.g. Ali Raza" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} />
             </div>
-            <div className="field">
-              <label>4-Digit PIN</label>
+            <div className="field"><label>4-Digit PIN</label>
               <input type="number" placeholder="e.g. 1234" value={form.pin} onChange={e => setForm(f => ({...f, pin: e.target.value.slice(0,4)}))} />
             </div>
             {err && <div className="form-err">{err}</div>}
@@ -398,38 +365,135 @@ function Wallet({ people, transactions, onRefresh }) {
   )
 }
 
-// ─── ADMIN: LEDGER ────────────────────────────────────────────────────────────
-function Ledger({ ledger, onRefresh }) {
+// LEDGER
+function Ledger({ ledger, ledgerTxns, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false)
+  const [selected, setSelected] = useState(null)
+  const [showTxn, setShowTxn] = useState(false)
   const [tab, setTab] = useState('pending')
   const [form, setForm] = useState({ name: '', type: 'owed', amount: '', note: '' })
+  const [txnForm, setTxnForm] = useState({ amount: '', note: '' })
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const getRemaining = (entry) => {
+    const settled = ledgerTxns.filter(lt => lt.ledger_id === entry.id).reduce((s, lt) => s + Number(lt.amount), 0)
+    return Math.max(0, Number(entry.amount) - settled)
+  }
+
   const addEntry = async () => {
     if (!form.name.trim()) { setErr('Name required'); return }
-    if (!form.amount || isNaN(form.amount) || Number(form.amount) <= 0) { setErr('Valid amount required'); return }
+    if (!form.amount || Number(form.amount) <= 0) { setErr('Valid amount required'); return }
     setLoading(true)
-    await supabase.from('ledger').insert({ name: form.name.trim(), type: form.type, amount: Number(form.amount), note: form.note })
+    await supabase.from('ledger').insert({ name: form.name.trim(), type: form.type, amount: Number(form.amount), note: form.note, status: 'pending' })
     await onRefresh(); setShowAdd(false); setForm({ name: '', type: 'owed', amount: '', note: '' }); setErr(''); setLoading(false)
   }
 
-  const markDone = async (id) => {
-    await supabase.from('ledger').update({ status: 'done' }).eq('id', id)
+  const addPayment = async () => {
+    if (!txnForm.amount || Number(txnForm.amount) <= 0) { setErr('Valid amount required'); return }
+    const remaining = getRemaining(selected)
+    if (Number(txnForm.amount) > remaining) { setErr(`Max amount is ${fmt(remaining)}`); return }
+    setLoading(true)
+    const txnType = selected.type === 'owed' ? 'received' : 'paid'
+    await supabase.from('ledger_transactions').insert({ ledger_id: selected.id, type: txnType, amount: Number(txnForm.amount), note: txnForm.note })
+    const newRemaining = remaining - Number(txnForm.amount)
+    if (newRemaining <= 0) await supabase.from('ledger').update({ status: 'done' }).eq('id', selected.id)
     await onRefresh()
+    const { data } = await supabase.from('ledger').select('*').eq('id', selected.id).single()
+    if (data) setSelected(data)
+    setShowTxn(false); setTxnForm({ amount: '', note: '' }); setErr(''); setLoading(false)
   }
 
   const deleteEntry = async (id) => {
-    if (!window.confirm('Delete this entry?')) return
+    if (!window.confirm('Delete this entry and all its records?')) return
     await supabase.from('ledger').delete().eq('id', id)
-    await onRefresh()
+    setSelected(null); await onRefresh()
   }
 
-  const filtered = ledger.filter(l => l.status === tab)
-  const owedToMe = filtered.filter(l => l.type === 'owed')
-  const iOwe = filtered.filter(l => l.type === 'owe')
-  const totalOwed = ledger.filter(l => l.type === 'owed' && l.status === 'pending').reduce((s,l) => s + Number(l.amount), 0)
-  const totalOwe = ledger.filter(l => l.type === 'owe' && l.status === 'pending').reduce((s,l) => s + Number(l.amount), 0)
+  const deletePayment = async (id) => {
+    if (!window.confirm('Delete this payment?')) return
+    await supabase.from('ledger_transactions').delete().eq('id', id)
+    await onRefresh()
+    const { data } = await supabase.from('ledger').select('*').eq('id', selected.id).single()
+    if (data) {
+      const newRem = getRemaining(data)
+      if (newRem > 0 && data.status === 'done') await supabase.from('ledger').update({ status: 'pending' }).eq('id', data.id)
+      setSelected(data)
+      await onRefresh()
+    }
+  }
+
+  if (selected) {
+    const payments = ledgerTxns.filter(lt => lt.ledger_id === selected.id).sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+    const remaining = getRemaining(selected)
+    const isReceive = selected.type === 'owed'
+    return (
+      <div className="section">
+        <button className="btn-back" onClick={() => setSelected(null)}>← Back to Ledger</button>
+        <div className="person-header">
+          <div className={`person-avatar ${isReceive ? '' : 'red'}`}>{selected.name.charAt(0)}</div>
+          <div style={{flex:1}}>
+            <h2>{selected.name}</h2>
+            <div className="person-pin">{isReceive ? 'To Receive' : 'To Pay'} · {fmtDate(selected.created_at)}</div>
+          </div>
+          <button className="btn-icon danger" onClick={() => deleteEntry(selected.id)}><Icon d={Icons.trash} size={16} /></button>
+        </div>
+
+        <div className={`balance-hero ${isReceive ? '' : 'red-hero'}`}>
+          <div className="balance-label">Original Amount</div>
+          <div className="balance-amount">{fmt(selected.amount)}</div>
+          <div className="balance-sub">Remaining: {fmt(remaining)}</div>
+        </div>
+
+        {selected.note && <div className="entry-note">📝 {selected.note}</div>}
+
+        {remaining > 0 ? (
+          <div style={{marginBottom:'1.5rem'}}>
+            <button className="btn-primary" onClick={() => { setTxnForm({ amount: '', note: '' }); setShowTxn(true) }}>
+              + Record {isReceive ? 'Payment Received' : 'Payment Made'}
+            </button>
+          </div>
+        ) : (
+          <div className="done-badge">✓ Fully Settled</div>
+        )}
+
+        <h4 className="sub-title">Payment History</h4>
+        <div className="card">
+          {payments.length === 0 ? <div className="empty">No payments recorded yet</div> : payments.map(lt => (
+            <div key={lt.id} className="txn-row">
+              <div className="txn-icon deposit"><Icon d={Icons.check} size={14} /></div>
+              <div className="txn-info">
+                <div className="txn-type">{lt.type === 'received' ? 'Received' : 'Paid'} — {fmt(lt.amount)}</div>
+                <div className="txn-meta">{fmtDate(lt.created_at)}{lt.note ? ` · ${lt.note}` : ''}</div>
+              </div>
+              <button className="btn-icon sm" onClick={() => deletePayment(lt.id)}><Icon d={Icons.trash} size={13} /></button>
+            </div>
+          ))}
+        </div>
+
+        {showTxn && (
+          <Modal title={isReceive ? 'Record Payment Received' : 'Record Payment Made'} onClose={() => { setShowTxn(false); setErr('') }}>
+            <div className="modal-body">
+              <div className="field"><label>Amount (Rs) · Remaining: {fmt(remaining)}</label>
+                <input type="number" placeholder="0" value={txnForm.amount} onChange={e => setTxnForm(f => ({...f, amount: e.target.value}))} />
+              </div>
+              <div className="field"><label>Note (optional)</label>
+                <input type="text" placeholder="e.g. Partial payment" value={txnForm.note} onChange={e => setTxnForm(f => ({...f, note: e.target.value}))} />
+              </div>
+              {err && <div className="form-err">{err}</div>}
+              <button className="btn-primary full" onClick={addPayment} disabled={loading}>{loading ? 'Saving...' : 'Save'}</button>
+            </div>
+          </Modal>
+        )}
+      </div>
+    )
+  }
+
+  const filtered = tab === 'pending' ? ledger.filter(l => l.status !== 'done') : ledger.filter(l => l.status === 'done')
+  const toReceive = filtered.filter(l => l.type === 'owed')
+  const toPay = filtered.filter(l => l.type === 'owe')
+  const totalReceive = ledger.filter(l => l.type === 'owed' && l.status !== 'done').reduce((s,l) => s + getRemaining(l), 0)
+  const totalPay = ledger.filter(l => l.type === 'owe' && l.status !== 'done').reduce((s,l) => s + getRemaining(l), 0)
 
   return (
     <div className="section">
@@ -437,87 +501,79 @@ function Ledger({ ledger, onRefresh }) {
         <h2 className="section-title">Ledger</h2>
         <button className="btn-primary sm" onClick={() => setShowAdd(true)}>+ Add Entry</button>
       </div>
-
       <div className="ledger-summary">
         <div className="ledger-stat success">
-          <div className="ls-label">Owed to Me</div>
-          <div className="ls-val">{fmt(totalOwed)}</div>
+          <div className="ls-label">To Receive</div>
+          <div className="ls-val">{fmt(totalReceive)}</div>
         </div>
         <div className="ledger-stat danger">
-          <div className="ls-label">I Owe</div>
-          <div className="ls-val">{fmt(totalOwe)}</div>
+          <div className="ls-label">To Pay</div>
+          <div className="ls-val">{fmt(totalPay)}</div>
         </div>
       </div>
-
       <div className="tabs">
         <button className={`tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')}>Pending</button>
         <button className={`tab ${tab === 'done' ? 'active' : ''}`} onClick={() => setTab('done')}>Completed</button>
       </div>
 
-      {owedToMe.length > 0 && (
-        <>
-          <h4 className="ledger-group-title success">Owed to Me</h4>
-          <div className="card">
-            {owedToMe.map(l => (
-              <div key={l.id} className="ledger-row">
-                <div className="ledger-info">
-                  <div className="ledger-name">{l.name}</div>
-                  <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
-                </div>
-                <div className="ledger-amount success">{fmt(l.amount)}</div>
-                <div className="ledger-actions">
-                  {l.status === 'pending' && <button className="btn-icon sm success" onClick={() => markDone(l.id)} title="Mark done"><Icon d={Icons.check} size={13} /></button>}
-                  <button className="btn-icon sm" onClick={() => deleteEntry(l.id)}><Icon d={Icons.trash} size={13} /></button>
-                </div>
+      {toReceive.length > 0 && <>
+        <h4 className="ledger-group-title success">To Receive</h4>
+        <div className="card">{toReceive.map(l => {
+          const rem = getRemaining(l)
+          return (
+            <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
+              <div className="ledger-info">
+                <div className="ledger-name">{l.name}</div>
+                <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
               </div>
-            ))}
-          </div>
-        </>
-      )}
+              <div style={{textAlign:'right',marginRight:'8px'}}>
+                <div className="ledger-amount success">{fmt(rem)}</div>
+                {rem < Number(l.amount) && <div style={{fontSize:'11px',color:'var(--text3)'}}>of {fmt(l.amount)}</div>}
+              </div>
+              <Icon d={Icons.arrow} size={15} />
+            </div>
+          )
+        })}</div>
+      </>}
 
-      {iOwe.length > 0 && (
-        <>
-          <h4 className="ledger-group-title danger">I Owe</h4>
-          <div className="card">
-            {iOwe.map(l => (
-              <div key={l.id} className="ledger-row">
-                <div className="ledger-info">
-                  <div className="ledger-name">{l.name}</div>
-                  <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
-                </div>
-                <div className="ledger-amount danger">{fmt(l.amount)}</div>
-                <div className="ledger-actions">
-                  {l.status === 'pending' && <button className="btn-icon sm success" onClick={() => markDone(l.id)} title="Mark done"><Icon d={Icons.check} size={13} /></button>}
-                  <button className="btn-icon sm" onClick={() => deleteEntry(l.id)}><Icon d={Icons.trash} size={13} /></button>
-                </div>
+      {toPay.length > 0 && <>
+        <h4 className="ledger-group-title danger">To Pay</h4>
+        <div className="card">{toPay.map(l => {
+          const rem = getRemaining(l)
+          return (
+            <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
+              <div className="ledger-info">
+                <div className="ledger-name">{l.name}</div>
+                <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
               </div>
-            ))}
-          </div>
-        </>
-      )}
+              <div style={{textAlign:'right',marginRight:'8px'}}>
+                <div className="ledger-amount danger">{fmt(rem)}</div>
+                {rem < Number(l.amount) && <div style={{fontSize:'11px',color:'var(--text3)'}}>of {fmt(l.amount)}</div>}
+              </div>
+              <Icon d={Icons.arrow} size={15} />
+            </div>
+          )
+        })}</div>
+      </>}
 
       {filtered.length === 0 && <div className="card"><div className="empty">No {tab} entries</div></div>}
 
       {showAdd && (
         <Modal title="Add Ledger Entry" onClose={() => { setShowAdd(false); setErr(''); setForm({ name: '', type: 'owed', amount: '', note: '' }) }}>
           <div className="modal-body">
-            <div className="field">
-              <label>Person / Party Name</label>
-              <input type="text" placeholder="e.g. Kamran" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} />
+            <div className="field"><label>Name</label>
+              <input type="text" placeholder="e.g. Ali" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} />
             </div>
-            <div className="field">
-              <label>Type</label>
+            <div className="field"><label>Type</label>
               <div className="toggle-row">
-                <button className={`toggle-btn ${form.type === 'owed' ? 'active success' : ''}`} onClick={() => setForm(f => ({...f, type:'owed'}))}>Owed to Me</button>
-                <button className={`toggle-btn ${form.type === 'owe' ? 'active danger' : ''}`} onClick={() => setForm(f => ({...f, type:'owe'}))}>I Owe</button>
+                <button className={`toggle-btn ${form.type === 'owed' ? 'active success' : ''}`} onClick={() => setForm(f => ({...f, type:'owed'}))}>To Receive</button>
+                <button className={`toggle-btn ${form.type === 'owe' ? 'active danger' : ''}`} onClick={() => setForm(f => ({...f, type:'owe'}))}>To Pay</button>
               </div>
             </div>
-            <div className="field">
-              <label>Amount (Rs)</label>
+            <div className="field"><label>Total Amount (Rs)</label>
               <input type="number" placeholder="0" value={form.amount} onChange={e => setForm(f => ({...f, amount: e.target.value}))} />
             </div>
-            <div className="field">
-              <label>Note (optional)</label>
+            <div className="field"><label>Note (optional)</label>
               <input type="text" placeholder="e.g. Lent on Apr 10" value={form.note} onChange={e => setForm(f => ({...f, note: e.target.value}))} />
             </div>
             {err && <div className="form-err">{err}</div>}
@@ -529,7 +585,7 @@ function Ledger({ ledger, onRefresh }) {
   )
 }
 
-// ─── ADMIN: PERSONAL FINANCE ──────────────────────────────────────────────────
+// PERSONAL FINANCE
 function Personal({ entries, categories, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showCat, setShowCat] = useState(false)
@@ -542,6 +598,9 @@ function Personal({ entries, categories, onRefresh }) {
   const monthEntries = entries.filter(e => e.entry_date && e.entry_date.slice(0,7) === month)
   const income = monthEntries.filter(e => e.type === 'income').reduce((s,e) => s + Number(e.amount), 0)
   const expense = monthEntries.filter(e => e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
+  const totalIncome = entries.filter(e => e.type === 'income').reduce((s,e) => s + Number(e.amount), 0)
+  const totalExpense = entries.filter(e => e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
+  const totalSaving = totalIncome - totalExpense
 
   const catTotals = categories.map(c => ({
     ...c,
@@ -549,7 +608,7 @@ function Personal({ entries, categories, onRefresh }) {
   })).filter(c => c.total > 0).sort((a,b) => b.total - a.total)
 
   const addEntry = async () => {
-    if (!form.amount || isNaN(form.amount) || Number(form.amount) <= 0) { setErr('Valid amount required'); return }
+    if (!form.amount || Number(form.amount) <= 0) { setErr('Valid amount required'); return }
     setLoading(true)
     await supabase.from('personal_entries').insert({ type: form.type, amount: Number(form.amount), category_id: form.category_id || null, note: form.note, entry_date: form.entry_date })
     await onRefresh(); setShowAdd(false); setForm({ type: 'expense', amount: '', category_id: '', note: '', entry_date: new Date().toISOString().split('T')[0] }); setErr(''); setLoading(false)
@@ -584,6 +643,14 @@ function Personal({ entries, categories, onRefresh }) {
         </div>
       </div>
 
+      <div className="saving-banner">
+        <div className="saving-icon"><Icon d={Icons.piggy} size={20} /></div>
+        <div>
+          <div className="saving-label">Total Savings (All Time)</div>
+          <div className={`saving-val ${totalSaving >= 0 ? '' : 'neg'}`}>{fmt(totalSaving)}</div>
+        </div>
+      </div>
+
       <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="month-picker" />
 
       <div className="stat-grid" style={{marginBottom:'1.5rem'}}>
@@ -596,31 +663,28 @@ function Personal({ entries, categories, onRefresh }) {
           <div className="stat-val">{fmt(expense)}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Net Saving</div>
+          <div className="stat-label">Net This Month</div>
           <div className={`stat-val ${income - expense >= 0 ? 'success-text' : 'danger-text'}`}>{fmt(income - expense)}</div>
         </div>
       </div>
 
-      {catTotals.length > 0 && (
-        <>
-          <h4 className="sub-title">Spending by Category</h4>
-          <div className="card" style={{marginBottom:'1.5rem'}}>
-            {catTotals.map(c => (
-              <div key={c.id} className="cat-row">
-                <div className="cat-name"><Icon d={Icons.tag} size={13} /> {c.name}</div>
-                <div className="cat-bar-wrap">
-                  <div className="cat-bar" style={{width: `${Math.min(100, (c.total/expense)*100)}%`}} />
-                </div>
-                <div className="cat-total">{fmt(c.total)}</div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      {catTotals.length > 0 && <>
+        <h4 className="sub-title">Spending by Category</h4>
+        <div className="card" style={{marginBottom:'1.5rem'}}>
+          {catTotals.map(c => (
+            <div key={c.id} className="cat-row">
+              <div className="cat-name"><Icon d={Icons.tag} size={13} /> {c.name}</div>
+              <div className="cat-bar-wrap"><div className="cat-bar" style={{width: `${Math.min(100,(c.total/expense)*100)}%`}} /></div>
+              <div className="cat-total">{fmt(c.total)}</div>
+            </div>
+          ))}
+        </div>
+      </>}
 
       <h4 className="sub-title">Entries</h4>
       <div className="card">
-        {monthEntries.length === 0 ? <div className="empty">No entries for this month</div> : [...monthEntries].sort((a,b) => new Date(b.entry_date) - new Date(a.entry_date)).map(e => {
+        {monthEntries.length === 0 ? <div className="empty">No entries for this month</div>
+          : [...monthEntries].sort((a,b) => new Date(b.entry_date) - new Date(a.entry_date)).map(e => {
           const cat = categories.find(c => c.id === e.category_id)
           return (
             <div key={e.id} className="txn-row">
@@ -639,30 +703,25 @@ function Personal({ entries, categories, onRefresh }) {
       {showAdd && (
         <Modal title="Add Entry" onClose={() => { setShowAdd(false); setErr('') }}>
           <div className="modal-body">
-            <div className="field">
-              <label>Type</label>
+            <div className="field"><label>Type</label>
               <div className="toggle-row">
                 <button className={`toggle-btn ${form.type === 'income' ? 'active success' : ''}`} onClick={() => setForm(f => ({...f, type:'income'}))}>Income</button>
                 <button className={`toggle-btn ${form.type === 'expense' ? 'active danger' : ''}`} onClick={() => setForm(f => ({...f, type:'expense'}))}>Expense</button>
               </div>
             </div>
-            <div className="field">
-              <label>Amount (Rs)</label>
+            <div className="field"><label>Amount (Rs)</label>
               <input type="number" placeholder="0" value={form.amount} onChange={e => setForm(f => ({...f, amount: e.target.value}))} />
             </div>
-            <div className="field">
-              <label>Category</label>
+            <div className="field"><label>Category</label>
               <select value={form.category_id} onChange={e => setForm(f => ({...f, category_id: e.target.value}))}>
                 <option value="">— No category —</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div className="field">
-              <label>Date</label>
+            <div className="field"><label>Date</label>
               <input type="date" value={form.entry_date} onChange={e => setForm(f => ({...f, entry_date: e.target.value}))} />
             </div>
-            <div className="field">
-              <label>Note (optional)</label>
+            <div className="field"><label>Note (optional)</label>
               <input type="text" placeholder="e.g. Grocery run" value={form.note} onChange={e => setForm(f => ({...f, note: e.target.value}))} />
             </div>
             {err && <div className="form-err">{err}</div>}
@@ -675,14 +734,14 @@ function Personal({ entries, categories, onRefresh }) {
         <Modal title="Manage Categories" onClose={() => { setShowCat(false); setErr('') }}>
           <div className="modal-body">
             <div className="field" style={{display:'flex',gap:'8px'}}>
-              <input type="text" placeholder="Category name" value={catForm.name} onChange={e => setCatForm({name: e.target.value})} style={{flex:1}} />
+              <input type="text" placeholder="Category name" value={catForm.name} onChange={e => setCatForm({name: e.target.value})} style={{flex:1}} onKeyDown={e => e.key === 'Enter' && addCategory()} />
               <button className="btn-primary" onClick={addCategory} disabled={loading}>Add</button>
             </div>
             {err && <div className="form-err">{err}</div>}
             <div style={{marginTop:'8px'}}>
               {categories.length === 0 ? <div className="empty">No categories yet</div> : categories.map(c => (
                 <div key={c.id} className="ledger-row">
-                  <div className="ledger-name">{c.name}</div>
+                  <div className="ledger-name" style={{flex:1}}>{c.name}</div>
                   <button className="btn-icon sm" onClick={() => deleteCategory(c.id)}><Icon d={Icons.trash} size={13} /></button>
                 </div>
               ))}
@@ -694,23 +753,24 @@ function Personal({ entries, categories, onRefresh }) {
   )
 }
 
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+// MAIN APP
 export default function App() {
-  const [auth, setAuth] = useState(null) // null | 'admin' | {user object}
+  const [auth, setAuth] = useState(null)
   const [activeTab, setActiveTab] = useState('dashboard')
-  const [data, setData] = useState({ people: [], transactions: [], ledger: [], personal: [], categories: [] })
+  const [data, setData] = useState({ people: [], transactions: [], ledger: [], ledgerTxns: [], personal: [], categories: [] })
   const [loading, setLoading] = useState(false)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const [p, t, l, pe, c] = await Promise.all([
+    const [p, t, l, lt, pe, c] = await Promise.all([
       supabase.from('people').select('*').order('created_at'),
       supabase.from('transactions').select('*').order('created_at', { ascending: false }),
       supabase.from('ledger').select('*').order('created_at', { ascending: false }),
+      supabase.from('ledger_transactions').select('*').order('created_at', { ascending: false }),
       supabase.from('personal_entries').select('*').order('entry_date', { ascending: false }),
       supabase.from('categories').select('*').order('name'),
     ])
-    setData({ people: p.data||[], transactions: t.data||[], ledger: l.data||[], personal: pe.data||[], categories: c.data||[] })
+    setData({ people: p.data||[], transactions: t.data||[], ledger: l.data||[], ledgerTxns: lt.data||[], personal: pe.data||[], categories: c.data||[] })
     setLoading(false)
   }, [])
 
@@ -723,8 +783,8 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div className="logo-icon sm">V</div>
-          <span>Vault</span>
+          <div className="logo-icon sm">W</div>
+          <span>Wallet</span>
         </div>
         <nav className="sidebar-nav">
           {[
@@ -744,15 +804,13 @@ export default function App() {
           <span>Logout</span>
         </button>
       </aside>
-
       <main className="main">
         {loading && <div className="loading-bar" />}
-        {activeTab === 'dashboard' && <Dashboard people={data.people} transactions={data.transactions} ledger={data.ledger} personalEntries={data.personal} />}
+        {activeTab === 'dashboard' && <Dashboard people={data.people} transactions={data.transactions} ledger={data.ledger} ledgerTxns={data.ledgerTxns} personalEntries={data.personal} />}
         {activeTab === 'wallet' && <Wallet people={data.people} transactions={data.transactions} onRefresh={fetchAll} />}
-        {activeTab === 'ledger' && <Ledger ledger={data.ledger} onRefresh={fetchAll} />}
+        {activeTab === 'ledger' && <Ledger ledger={data.ledger} ledgerTxns={data.ledgerTxns} onRefresh={fetchAll} />}
         {activeTab === 'personal' && <Personal entries={data.personal} categories={data.categories} onRefresh={fetchAll} />}
       </main>
-
       <nav className="bottom-nav">
         {[
           { id: 'dashboard', label: 'Home', icon: Icons.dashboard },
