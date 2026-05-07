@@ -22,7 +22,6 @@ const Icons = {
   arrow: "M5 12h14M12 5l7 7-7 7",
   tag: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01",
   user: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 110-8 4 4 0 010 8",
-  piggy: "M19 8a7 7 0 00-14 0c0 3.87 2.69 7.12 6.38 7.86L12 19l.62-3.14C16.31 15.12 19 11.87 19 8z",
   search: "M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z",
   moon: "M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z",
   sun: "M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42M12 5a7 7 0 100 14A7 7 0 0012 5z",
@@ -30,6 +29,7 @@ const Icons = {
 
 const fmt = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })
+const today = () => new Date().toISOString().split('T')[0]
 
 function Modal({ title, onClose, children }) {
   return (
@@ -109,7 +109,7 @@ function LoginScreen({ onAdminLogin, onUserLogin }) {
         <button className="num-btn" onClick={() => addDigit('0')}>0</button>
         <div className="num-btn empty-btn" />
       </div>
-      <button className="btn-ghost back-btn" onClick={() => { setMode('choose'); setErr(''); setPin('') }}>← Back</button>
+      <button className="back-btn" onClick={() => { setMode('choose'); setErr(''); setPin('') }}>← Back</button>
     </div>
   )
 }
@@ -172,14 +172,9 @@ function Dashboard({ people, transactions, ledger, ledgerTxns, personalEntries }
 
   const totalReceive = ledger.filter(l => l.type === 'owed' && l.status !== 'done').reduce((s, l) => s + Math.max(0, getRemaining(l)), 0)
   const totalPay = ledger.filter(l => l.type === 'owe' && l.status !== 'done').reduce((s, l) => s + Math.max(0, getRemaining(l)), 0)
-
-  const thisMonth = new Date()
-  const monthEntries = personalEntries.filter(e => {
-    const d = new Date(e.entry_date)
-    return d.getMonth() === thisMonth.getMonth() && d.getFullYear() === thisMonth.getFullYear()
-  })
-  const income = monthEntries.filter(e => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0)
-  const expense = monthEntries.filter(e => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0)
+  const totalIncome = personalEntries.filter(e => e.type === 'income').reduce((s,e) => s + Number(e.amount), 0)
+  const totalExpense = personalEntries.filter(e => e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
+  const currentBalance = totalIncome - totalExpense
 
   const recentTxns = [...transactions].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0,5)
 
@@ -200,8 +195,8 @@ function Dashboard({ people, transactions, ledger, ledgerTxns, personalEntries }
           <div className="stat-val">{fmt(totalPay)}</div>
         </div>
         <div className="stat-card info">
-          <div className="stat-label">Net This Month</div>
-          <div className="stat-val">{fmt(income - expense)}</div>
+          <div className="stat-label">Current Balance</div>
+          <div className="stat-val">{fmt(currentBalance)}</div>
         </div>
       </div>
       <h3 className="sub-title">Recent Transactions</h3>
@@ -230,7 +225,7 @@ function Wallet({ people, transactions, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showTxn, setShowTxn] = useState(false)
   const [form, setForm] = useState({ name: '', pin: '' })
-  const [txnForm, setTxnForm] = useState({ type: 'deposit', amount: '', note: '' })
+  const [txnForm, setTxnForm] = useState({ type: 'deposit', amount: '', note: '', txn_date: today() })
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -251,8 +246,14 @@ function Wallet({ people, transactions, onRefresh }) {
   const addTxn = async () => {
     if (!txnForm.amount || Number(txnForm.amount) <= 0) { setErr('Valid amount required'); return }
     setLoading(true)
-    await supabase.from('transactions').insert({ person_id: selected.id, type: txnForm.type, amount: Number(txnForm.amount), note: txnForm.note })
-    await onRefresh(); setShowTxn(false); setTxnForm({ type: 'deposit', amount: '', note: '' }); setErr(''); setLoading(false)
+    await supabase.from('transactions').insert({
+      person_id: selected.id,
+      type: txnForm.type,
+      amount: Number(txnForm.amount),
+      note: txnForm.note,
+      created_at: new Date(txnForm.txn_date).toISOString()
+    })
+    await onRefresh(); setShowTxn(false); setTxnForm({ type: 'deposit', amount: '', note: '', txn_date: today() }); setErr(''); setLoading(false)
   }
 
   const deletePerson = async (id) => {
@@ -286,8 +287,8 @@ function Wallet({ people, transactions, onRefresh }) {
           <div className="balance-amount">{fmt(bal)}</div>
         </div>
         <div style={{display:'flex',gap:'8px',marginBottom:'1.5rem'}}>
-          <button className="btn-primary" onClick={() => { setTxnForm({type:'deposit',amount:'',note:''}); setShowTxn(true) }}>+ Deposit</button>
-          <button className="btn-danger" onClick={() => { setTxnForm({type:'withdraw',amount:'',note:''}); setShowTxn(true) }}>− Withdraw</button>
+          <button className="btn-primary" onClick={() => { setTxnForm({type:'deposit',amount:'',note:'',txn_date:today()}); setShowTxn(true) }}>+ Deposit</button>
+          <button className="btn-danger" onClick={() => { setTxnForm({type:'withdraw',amount:'',note:'',txn_date:today()}); setShowTxn(true) }}>− Withdraw</button>
         </div>
         <div className="card">
           {ptxns.length === 0 ? <div className="empty">No transactions</div> : ptxns.map(t => (
@@ -313,6 +314,9 @@ function Wallet({ people, transactions, onRefresh }) {
               </div>
               <div className="field"><label>Amount (Rs)</label>
                 <input type="number" placeholder="0" value={txnForm.amount} onChange={e => setTxnForm(f => ({...f, amount: e.target.value}))} />
+              </div>
+              <div className="field"><label>Date</label>
+                <input type="date" value={txnForm.txn_date} onChange={e => setTxnForm(f => ({...f, txn_date: e.target.value}))} />
               </div>
               <div className="field"><label>Note (optional)</label>
                 <input type="text" placeholder="e.g. Monthly saving" value={txnForm.note} onChange={e => setTxnForm(f => ({...f, note: e.target.value}))} />
@@ -352,7 +356,7 @@ function Wallet({ people, transactions, onRefresh }) {
         <Modal title="Add New Person" onClose={() => { setShowAdd(false); setErr(''); setForm({ name: '', pin: '' }) }}>
           <div className="modal-body">
             <div className="field"><label>Full Name</label>
-              <input type="text" placeholder="e.g. New Person" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} />
+              <input type="text" placeholder="Enter name" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} />
             </div>
             <div className="field"><label>4-Digit PIN</label>
               <input type="number" placeholder="e.g. 1234" value={form.pin} onChange={e => setForm(f => ({...f, pin: e.target.value.slice(0,4)}))} />
@@ -371,10 +375,11 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
   const [showTxn, setShowTxn] = useState(false)
+  const [txnType, setTxnType] = useState('paid')
   const [tab, setTab] = useState('pending')
   const [search, setSearch] = useState('')
   const [form, setForm] = useState({ name: '', type: 'owed', amount: '', note: '' })
-  const [txnForm, setTxnForm] = useState({ type: 'paid', amount: '', note: '' })
+  const [txnForm, setTxnForm] = useState({ amount: '', note: '' })
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -395,22 +400,26 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
 
   const addTransaction = async () => {
     if (!txnForm.amount || Number(txnForm.amount) <= 0) { setErr('Valid amount required'); return }
-    if (txnForm.type === 'paid') {
-      const remaining = getRemaining(selected)
-      if (Number(txnForm.amount) > remaining) { setErr(`Max payable is ${fmt(remaining)}`); return }
-    }
+    const remaining = getRemaining(selected)
+    if (txnType === 'paid' && Number(txnForm.amount) > remaining) { setErr(`Max is ${fmt(remaining)}`); return }
     setLoading(true)
-    await supabase.from('ledger_transactions').insert({ ledger_id: selected.id, type: txnForm.type, amount: Number(txnForm.amount), note: txnForm.note })
-    const newRemaining = getRemaining(selected) + (txnForm.type === 'added' ? Number(txnForm.amount) : -Number(txnForm.amount))
-    if (newRemaining <= 0 && txnForm.type === 'paid') {
-      await supabase.from('ledger').update({ status: 'done' }).eq('id', selected.id)
-    } else if (selected.status === 'done') {
+    await supabase.from('ledger_transactions').insert({
+      ledger_id: selected.id,
+      type: txnType,
+      amount: Number(txnForm.amount),
+      note: txnForm.note
+    })
+    if (txnType === 'paid') {
+      const newRem = remaining - Number(txnForm.amount)
+      if (newRem <= 0) await supabase.from('ledger').update({ status: 'done' }).eq('id', selected.id)
+      else await supabase.from('ledger').update({ status: 'pending' }).eq('id', selected.id)
+    } else if (txnType === 'added') {
       await supabase.from('ledger').update({ status: 'pending' }).eq('id', selected.id)
     }
     await onRefresh()
     const { data } = await supabase.from('ledger').select('*').eq('id', selected.id).single()
     if (data) setSelected(data)
-    setShowTxn(false); setTxnForm({ type: 'paid', amount: '', note: '' }); setErr(''); setLoading(false)
+    setShowTxn(false); setTxnForm({ amount: '', note: '' }); setErr(''); setLoading(false)
   }
 
   const deleteEntry = async (id) => {
@@ -424,7 +433,12 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
     await supabase.from('ledger_transactions').delete().eq('id', id)
     await onRefresh()
     const { data } = await supabase.from('ledger').select('*').eq('id', selected.id).single()
-    if (data) setSelected(data)
+    if (data) {
+      const rem = getRemaining(data)
+      if (rem > 0 && data.status === 'done') await supabase.from('ledger').update({ status: 'pending' }).eq('id', data.id)
+      setSelected(data)
+      await onRefresh()
+    }
   }
 
   if (selected) {
@@ -451,17 +465,13 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
         </div>
 
         {selected.note && <div className="entry-note">📝 {selected.note}</div>}
+        {remaining <= 0 && <div className="done-badge">✓ Fully Settled</div>}
 
-        {remaining <= 0
-          ? <div className="done-badge">✓ Fully Settled</div>
-          : null
-        }
-
-        <div style={{display:'flex', gap:'8px', marginBottom:'1.5rem'}}>
-          <button className="btn-primary" onClick={() => { setTxnForm({ type: 'paid', amount: '', note: '' }); setShowTxn(true) }}>
+        <div style={{display:'flex', gap:'8px', marginBottom:'1.5rem', flexWrap:'wrap'}}>
+          <button className="btn-primary" onClick={() => { setTxnType('paid'); setTxnForm({ amount: '', note: '' }); setShowTxn(true) }}>
             + {isReceive ? 'Payment Received' : 'Payment Made'}
           </button>
-          <button className="btn-ghost sm" onClick={() => { setTxnForm({ type: 'added', amount: '', note: '' }); setShowTxn(true) }}>
+          <button className="btn-ghost sm" onClick={() => { setTxnType('added'); setTxnForm({ amount: '', note: '' }); setShowTxn(true) }}>
             + Added
           </button>
         </div>
@@ -486,9 +496,10 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
         </div>
 
         {showTxn && (
-          <Modal title={txnForm.type === 'paid' ? (isReceive ? 'Payment Received' : 'Payment Made') : 'Added Amount'} onClose={() => { setShowTxn(false); setErr('') }}>
+          <Modal title={txnType === 'added' ? 'Added Amount' : (isReceive ? 'Payment Received' : 'Payment Made')} onClose={() => { setShowTxn(false); setErr('') }}>
             <div className="modal-body">
-              <div className="field"><label>Amount (Rs){txnForm.type === 'paid' ? ` · Remaining: ${fmt(Math.max(0,remaining))}` : ''}</label>
+              <div className="field">
+                <label>Amount (Rs){txnType === 'paid' ? ` · Remaining: ${fmt(Math.max(0, remaining))}` : ''}</label>
                 <input type="number" placeholder="0" value={txnForm.amount} onChange={e => setTxnForm(f => ({...f, amount: e.target.value}))} />
               </div>
               <div className="field"><label>Note (optional)</label>
@@ -517,24 +528,15 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
         <h2 className="section-title">Ledger</h2>
         <button className="btn-primary sm" onClick={() => setShowAdd(true)}>+ Add Entry</button>
       </div>
-
       <div className="ledger-summary">
-        <div className="ledger-stat success">
-          <div className="ls-label">To Receive</div>
-          <div className="ls-val">{fmt(totalReceive)}</div>
-        </div>
-        <div className="ledger-stat danger">
-          <div className="ls-label">To Pay</div>
-          <div className="ls-val">{fmt(totalPay)}</div>
-        </div>
+        <div className="ledger-stat success"><div className="ls-label">To Receive</div><div className="ls-val">{fmt(totalReceive)}</div></div>
+        <div className="ledger-stat danger"><div className="ls-label">To Pay</div><div className="ls-val">{fmt(totalPay)}</div></div>
       </div>
-
       <div className="search-bar">
         <Icon d={Icons.search} size={16} />
         <input type="text" placeholder="Search by name..." value={search} onChange={e => setSearch(e.target.value)} />
         {search && <button onClick={() => setSearch('')} className="search-clear">✕</button>}
       </div>
-
       <div className="tabs">
         <button className={`tab ${tab === 'pending' ? 'active' : ''}`} onClick={() => setTab('pending')}>Pending</button>
         <button className={`tab ${tab === 'done' ? 'active' : ''}`} onClick={() => setTab('done')}>Completed</button>
@@ -542,36 +544,30 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
 
       {toReceive.length > 0 && <>
         <h4 className="ledger-group-title success">To Receive</h4>
-        <div className="card">{toReceive.map(l => {
-          const rem = getRemaining(l)
-          return (
-            <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
-              <div className="ledger-info">
-                <div className="ledger-name">{l.name}</div>
-                <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
-              </div>
-              <div className="ledger-amount success">{fmt(Math.max(0, rem))}</div>
-              <Icon d={Icons.arrow} size={15} />
+        <div className="card">{toReceive.map(l => (
+          <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
+            <div className="ledger-info">
+              <div className="ledger-name">{l.name}</div>
+              <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
             </div>
-          )
-        })}</div>
+            <div className="ledger-amount success">{fmt(Math.max(0, getRemaining(l)))}</div>
+            <Icon d={Icons.arrow} size={15} />
+          </div>
+        ))}</div>
       </>}
 
       {toPay.length > 0 && <>
         <h4 className="ledger-group-title danger">To Pay</h4>
-        <div className="card">{toPay.map(l => {
-          const rem = getRemaining(l)
-          return (
-            <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
-              <div className="ledger-info">
-                <div className="ledger-name">{l.name}</div>
-                <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
-              </div>
-              <div className="ledger-amount danger">{fmt(Math.max(0, rem))}</div>
-              <Icon d={Icons.arrow} size={15} />
+        <div className="card">{toPay.map(l => (
+          <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
+            <div className="ledger-info">
+              <div className="ledger-name">{l.name}</div>
+              <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
             </div>
-          )
-        })}</div>
+            <div className="ledger-amount danger">{fmt(Math.max(0, getRemaining(l)))}</div>
+            <Icon d={Icons.arrow} size={15} />
+          </div>
+        ))}</div>
       </>}
 
       {filtered.length === 0 && <div className="card"><div className="empty">{search ? 'No results found' : `No ${tab} entries`}</div></div>}
@@ -607,7 +603,7 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
 function Personal({ entries, categories, onRefresh }) {
   const [showAdd, setShowAdd] = useState(false)
   const [showCat, setShowCat] = useState(false)
-  const [form, setForm] = useState({ type: 'expense', amount: '', category_id: '', note: '', entry_date: new Date().toISOString().split('T')[0] })
+  const [form, setForm] = useState({ type: 'expense', amount: '', category_id: '', note: '', entry_date: today() })
   const [catForm, setCatForm] = useState({ name: '' })
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -628,7 +624,7 @@ function Personal({ entries, categories, onRefresh }) {
     if (!form.amount || Number(form.amount) <= 0) { setErr('Valid amount required'); return }
     setLoading(true)
     await supabase.from('personal_entries').insert({ type: form.type, amount: Number(form.amount), category_id: form.category_id || null, note: form.note, entry_date: form.entry_date })
-    await onRefresh(); setShowAdd(false); setForm({ type: 'expense', amount: '', category_id: '', note: '', entry_date: new Date().toISOString().split('T')[0] }); setErr(''); setLoading(false)
+    await onRefresh(); setShowAdd(false); setForm({ type: 'expense', amount: '', category_id: '', note: '', entry_date: today() }); setErr(''); setLoading(false)
   }
 
   const addCategory = async () => {
@@ -660,7 +656,7 @@ function Personal({ entries, categories, onRefresh }) {
 
       <div className="saving-banner">
         <div>
-          <div className="saving-label">Total Savings (All Time)</div>
+          <div className="saving-label">Current Balance</div>
           <div className={`saving-val ${totalSaving < 0 ? 'neg' : ''}`}>{fmt(totalSaving)}</div>
         </div>
       </div>
@@ -670,7 +666,7 @@ function Personal({ entries, categories, onRefresh }) {
       <div className="stat-grid" style={{marginBottom:'1.5rem'}}>
         <div className="stat-card success"><div className="stat-label">Income</div><div className="stat-val">{fmt(income)}</div></div>
         <div className="stat-card danger"><div className="stat-label">Expenses</div><div className="stat-val">{fmt(expense)}</div></div>
-        <div className="stat-card"><div className="stat-label">Net This Month</div><div className={`stat-val ${income-expense >= 0 ? 'success-text':'danger-text'}`}>{fmt(income-expense)}</div></div>
+      </div>
       </div>
 
       {catTotals.length > 0 && <>
@@ -813,7 +809,6 @@ export default function App() {
           </button>
         </div>
       </aside>
-
       <main className="main">
         {loading && <div className="loading-bar" />}
         {activeTab === 'dashboard' && <Dashboard people={data.people} transactions={data.transactions} ledger={data.ledger} ledgerTxns={data.ledgerTxns} personalEntries={data.personal} />}
@@ -821,7 +816,6 @@ export default function App() {
         {activeTab === 'ledger' && <Ledger ledger={data.ledger} ledgerTxns={data.ledgerTxns} onRefresh={fetchAll} />}
         {activeTab === 'personal' && <Personal entries={data.personal} categories={data.categories} onRefresh={fetchAll} />}
       </main>
-
       <nav className="bottom-nav">
         {[
           { id: 'dashboard', label: 'Home', icon: Icons.dashboard },
