@@ -667,7 +667,6 @@ function Personal({ entries, categories, onRefresh }) {
         <div className="stat-card success"><div className="stat-label">Income</div><div className="stat-val">{fmt(income)}</div></div>
         <div className="stat-card danger"><div className="stat-label">Expenses</div><div className="stat-val">{fmt(expense)}</div></div>
       </div>
-      </div>
 
       {catTotals.length > 0 && <>
         <h4 className="sub-title">Spending by Category</h4>
