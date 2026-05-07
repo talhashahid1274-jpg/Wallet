@@ -47,7 +47,8 @@ function Modal({ title, onClose, children }) {
 
 // LOGIN
 function LoginScreen({ onAdminLogin, onUserLogin }) {
-  const [mode, setMode] = useState('choose')
+  const [mode, setMode] = useState('user')
+  const [showAdminBtn, setShowAdminBtn] = useState(false)
   const [pin, setPin] = useState('')
   const [err, setErr] = useState('')
   const [checking, setChecking] = useState(false)
@@ -70,33 +71,24 @@ function LoginScreen({ onAdminLogin, onUserLogin }) {
   const addDigit = (d) => { if (pin.length < 4 && !checking) setPin(p => p + d) }
   const delDigit = () => { if (!checking) setPin(p => p.slice(0, -1)) }
 
-  if (mode === 'choose') return (
-    <div className="login-screen">
-      <div className="login-logo">
-        <div className="logo-icon">W</div>
-        <h1>Wallet</h1>
-        <p>Secure money management</p>
-      </div>
-      <div className="login-choose">
-        <button className="btn-login-choice" onClick={() => { setMode('admin'); setPin(''); setErr('') }}>
-          <Icon d={Icons.wallet} size={24} />
-          <div><span>Admin Login</span><small>Full access</small></div>
-        </button>
-        <button className="btn-login-choice" onClick={() => { setMode('user'); setPin(''); setErr('') }}>
-          <Icon d={Icons.user} size={24} />
-          <div><span>View My Balance</span><small>Enter your PIN</small></div>
-        </button>
-      </div>
-    </div>
-  )
+  const handleLogoTap = () => {
+    setShowAdminBtn(true)
+    setTimeout(() => setShowAdminBtn(false), 3000)
+  }
 
   return (
     <div className="login-screen">
-      <div className="login-logo">
+      <div className="login-logo" onClick={handleLogoTap} style={{cursor:'pointer', userSelect:'none'}}>
         <div className="logo-icon">W</div>
-        <h1>{mode === 'admin' ? 'Admin PIN' : 'Your PIN'}</h1>
+        <h1>Wallet</h1>
         <p>{mode === 'admin' ? 'Enter 4-digit admin PIN' : 'Enter your 4-digit PIN'}</p>
       </div>
+      {mode === 'admin' && <div className="admin-badge">Admin Mode</div>}
+      {showAdminBtn && mode !== 'admin' && (
+        <button className="admin-hint-btn" onClick={() => { setMode('admin'); setPin(''); setErr(''); setShowAdminBtn(false) }}>
+          Switch to Admin Login
+        </button>
+      )}
       <div className="pin-dots">
         {[0,1,2,3].map(i => <div key={i} className={`pin-dot ${pin.length > i ? 'filled' : ''} ${err ? 'shake' : ''}`} />)}
       </div>
@@ -109,7 +101,9 @@ function LoginScreen({ onAdminLogin, onUserLogin }) {
         <button className="num-btn" onClick={() => addDigit('0')}>0</button>
         <div className="num-btn empty-btn" />
       </div>
-      <button className="back-btn" onClick={() => { setMode('choose'); setErr(''); setPin('') }}>← Back</button>
+      {mode === 'admin' && (
+        <button className="back-btn" onClick={() => { setMode('user'); setErr(''); setPin('') }}>← Back</button>
+      )}
     </div>
   )
 }
@@ -193,10 +187,6 @@ function Dashboard({ people, transactions, ledger, ledgerTxns, personalEntries }
         <div className="stat-card danger">
           <div className="stat-label">To Pay</div>
           <div className="stat-val">{fmt(totalPay)}</div>
-        </div>
-        <div className="stat-card info">
-          <div className="stat-label">Current Balance</div>
-          <div className="stat-val">{fmt(currentBalance)}</div>
         </div>
       </div>
       <h3 className="sub-title">Recent Transactions</h3>
@@ -378,8 +368,8 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
   const [txnType, setTxnType] = useState('paid')
   const [tab, setTab] = useState('pending')
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ name: '', type: 'owed', amount: '', note: '' })
-  const [txnForm, setTxnForm] = useState({ amount: '', note: '' })
+  const [form, setForm] = useState({ name: '', type: 'owed', amount: '', note: '', entry_date: today() })
+  const [txnForm, setTxnForm] = useState({ amount: '', note: '', entry_date: today() })
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -394,8 +384,8 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
     if (!form.name.trim()) { setErr('Name required'); return }
     if (!form.amount || Number(form.amount) <= 0) { setErr('Valid amount required'); return }
     setLoading(true)
-    await supabase.from('ledger').insert({ name: form.name.trim(), type: form.type, amount: Number(form.amount), note: form.note, status: 'pending' })
-    await onRefresh(); setShowAdd(false); setForm({ name: '', type: 'owed', amount: '', note: '' }); setErr(''); setLoading(false)
+    await supabase.from('ledger').insert({ name: form.name.trim(), type: form.type, amount: Number(form.amount), note: form.note, status: 'pending', created_at: new Date(form.entry_date).toISOString() })
+    await onRefresh(); setShowAdd(false); setForm({ name: '', type: 'owed', amount: '', note: '', entry_date: today() }); setErr(''); setLoading(false)
   }
 
   const addTransaction = async () => {
@@ -403,12 +393,15 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
     const remaining = getRemaining(selected)
     if (txnType === 'paid' && Number(txnForm.amount) > remaining) { setErr(`Max is ${fmt(remaining)}`); return }
     setLoading(true)
-    await supabase.from('ledger_transactions').insert({
+    // Use upsert-safe insert with no type constraint issue
+    const { error } = await supabase.from('ledger_transactions').insert({
       ledger_id: selected.id,
       type: txnType,
       amount: Number(txnForm.amount),
-      note: txnForm.note
+      note: txnForm.note,
+      created_at: new Date(txnForm.entry_date).toISOString()
     })
+    if (error) { setErr('Failed to save. Please try again.'); setLoading(false); return }
     if (txnType === 'paid') {
       const newRem = remaining - Number(txnForm.amount)
       if (newRem <= 0) await supabase.from('ledger').update({ status: 'done' }).eq('id', selected.id)
@@ -419,7 +412,7 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
     await onRefresh()
     const { data } = await supabase.from('ledger').select('*').eq('id', selected.id).single()
     if (data) setSelected(data)
-    setShowTxn(false); setTxnForm({ amount: '', note: '' }); setErr(''); setLoading(false)
+    setShowTxn(false); setTxnForm({ amount: '', note: '', entry_date: today() }); setErr(''); setLoading(false)
   }
 
   const deleteEntry = async (id) => {
@@ -501,6 +494,9 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
               <div className="field">
                 <label>Amount (Rs){txnType === 'paid' ? ` · Remaining: ${fmt(Math.max(0, remaining))}` : ''}</label>
                 <input type="number" placeholder="0" value={txnForm.amount} onChange={e => setTxnForm(f => ({...f, amount: e.target.value}))} />
+              </div>
+              <div className="field"><label>Date</label>
+                <input type="date" value={txnForm.entry_date} onChange={e => setTxnForm(f => ({...f, entry_date: e.target.value}))} />
               </div>
               <div className="field"><label>Note (optional)</label>
                 <input type="text" placeholder="e.g. Partial payment" value={txnForm.note} onChange={e => setTxnForm(f => ({...f, note: e.target.value}))} />
@@ -586,6 +582,9 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
             </div>
             <div className="field"><label>Amount (Rs)</label>
               <input type="number" placeholder="0" value={form.amount} onChange={e => setForm(f => ({...f, amount: e.target.value}))} />
+            </div>
+            <div className="field"><label>Date</label>
+              <input type="date" value={form.entry_date} onChange={e => setForm(f => ({...f, entry_date: e.target.value}))} />
             </div>
             <div className="field"><label>Note (optional)</label>
               <input type="text" placeholder="e.g. April loan" value={form.note} onChange={e => setForm(f => ({...f, note: e.target.value}))} />
