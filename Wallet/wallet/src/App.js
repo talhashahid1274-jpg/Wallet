@@ -930,22 +930,3 @@ export default function App() {
     </div>
   )
 }
-
-      <nav className="bottom-nav">
-        {[
-          { id: 'dashboard', label: 'Home', icon: Icons.dashboard },
-          { id: 'wallet', label: 'Wallet', icon: Icons.wallet },
-          { id: 'ledger', label: 'Ledger', icon: Icons.ledger },
-          { id: 'personal', label: 'Personal', icon: Icons.personal },
-        ].map(item => (
-          <button key={item.id} className={`bottom-nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => setActiveTab(item.id)}>
-            <Icon d={item.icon} size={20} /><span>{item.label}</span>
-          </button>
-        ))}
-        <button className="bottom-nav-item" onClick={() => setDark(d => !d)}>
-          <Icon d={dark ? Icons.sun : Icons.moon} size={20} /><span>{dark ? 'Light' : 'Dark'}</span>
-        </button>
-      </nav>
-    </div>
-  )
-}
