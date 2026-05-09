@@ -25,6 +25,12 @@ const Icons = {
   search: "M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z",
   moon: "M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z",
   settings: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z",
+  report: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+  calendar: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18",
+  download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3",
+  alert: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01",
+  piggy: "M19 8a7 7 0 00-14 0c0 3.87 2.69 7.12 6.38 7.86L12 19l.62-3.14C16.31 15.12 19 11.87 19 8z",
+  sun: "M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42M12 5a7 7 0 100 14A7 7 0 0012 5z",
 }
 
 const fmt = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`
@@ -391,7 +397,7 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
   const [txnType, setTxnType] = useState('paid')
   const [tab, setTab] = useState('pending')
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ name: '', type: 'owed', amount: '', note: '', entry_date: today() })
+  const [form, setForm] = useState({ name: '', type: 'owed', amount: '', note: '', entry_date: today(), due_date: '' })
   const [txnForm, setTxnForm] = useState({ amount: '', note: '', entry_date: today() })
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -403,12 +409,21 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
     return Number(entry.amount) + added - paid
   }
 
+  const isOverdue = (entry) => {
+    if (!entry.due_date || entry.status === 'done') return false
+    return new Date(entry.due_date) < new Date()
+  }
+  const getDaysLeft = (entry) => {
+    if (!entry.due_date) return null
+    return Math.ceil((new Date(entry.due_date) - new Date()) / (1000*60*60*24))
+  }
+
   const addEntry = async () => {
     if (!form.name.trim()) { setErr('Name required'); return }
     if (!form.amount || Number(form.amount) <= 0) { setErr('Valid amount required'); return }
     setLoading(true)
-    await supabase.from('ledger').insert({ name: form.name.trim(), type: form.type, amount: Number(form.amount), note: form.note, status: 'pending', created_at: new Date(form.entry_date).toISOString() })
-    await onRefresh(); setShowAdd(false); setForm({ name: '', type: 'owed', amount: '', note: '', entry_date: today() }); setErr(''); setLoading(false)
+    await supabase.from('ledger').insert({ name: form.name.trim(), type: form.type, amount: Number(form.amount), note: form.note, status: 'pending', created_at: new Date(form.entry_date).toISOString(), due_date: form.due_date || null })
+    await onRefresh(); setShowAdd(false); setForm({ name: '', type: 'owed', amount: '', note: '', entry_date: today(), due_date: '' }); setErr(''); setLoading(false)
   }
 
   const addTransaction = async () => {
@@ -562,36 +577,54 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
 
       {toReceive.length > 0 && <>
         <h4 className="ledger-group-title success">To Receive</h4>
-        <div className="card">{toReceive.map(l => (
-          <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
-            <div className="ledger-info">
-              <div className="ledger-name">{l.name}</div>
-              <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
+        <div className="card">{toReceive.map(l => {
+          const rem = getRemaining(l)
+          const overdue = isOverdue(l)
+          const daysLeft = getDaysLeft(l)
+          return (
+            <div key={l.id} className={`ledger-row${overdue ? ' overdue-row' : ''}`} style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
+              <div className="ledger-info">
+                <div className="ledger-name">{l.name} {overdue && <span className="overdue-tag">Overdue</span>}</div>
+                <div className="ledger-note">
+                  {fmtDate(l.created_at)}
+                  {l.due_date && <span className={daysLeft < 0 ? ' due-red' : daysLeft <= 3 ? ' due-orange' : ' due-gray'}> · Due: {fmtDate(l.due_date)}{daysLeft >= 0 ? ` (${daysLeft}d left)` : ''}</span>}
+                  {l.note ? ` · ${l.note}` : ''}
+                </div>
+              </div>
+              <div className="ledger-amount success">{fmt(Math.max(0, rem))}</div>
+              <Icon d={Icons.arrow} size={15} />
             </div>
-            <div className="ledger-amount success">{fmt(Math.max(0, getRemaining(l)))}</div>
-            <Icon d={Icons.arrow} size={15} />
-          </div>
-        ))}</div>
+          )
+        })}</div>
       </>}
 
       {toPay.length > 0 && <>
         <h4 className="ledger-group-title danger">To Pay</h4>
-        <div className="card">{toPay.map(l => (
-          <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
-            <div className="ledger-info">
-              <div className="ledger-name">{l.name}</div>
-              <div className="ledger-note">{fmtDate(l.created_at)}{l.note ? ` · ${l.note}` : ''}</div>
+        <div className="card">{toPay.map(l => {
+          const rem = getRemaining(l)
+          const overdue = isOverdue(l)
+          const daysLeft = getDaysLeft(l)
+          return (
+            <div key={l.id} className={`ledger-row${overdue ? ' overdue-row' : ''}`} style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
+              <div className="ledger-info">
+                <div className="ledger-name">{l.name} {overdue && <span className="overdue-tag">Overdue</span>}</div>
+                <div className="ledger-note">
+                  {fmtDate(l.created_at)}
+                  {l.due_date && <span className={daysLeft < 0 ? ' due-red' : daysLeft <= 3 ? ' due-orange' : ' due-gray'}> · Due: {fmtDate(l.due_date)}{daysLeft >= 0 ? ` (${daysLeft}d left)` : ''}</span>}
+                  {l.note ? ` · ${l.note}` : ''}
+                </div>
+              </div>
+              <div className="ledger-amount danger">{fmt(Math.max(0, rem))}</div>
+              <Icon d={Icons.arrow} size={15} />
             </div>
-            <div className="ledger-amount danger">{fmt(Math.max(0, getRemaining(l)))}</div>
-            <Icon d={Icons.arrow} size={15} />
-          </div>
-        ))}</div>
+          )
+        })}</div>
       </>}
 
       {filtered.length === 0 && <div className="card"><div className="empty">{search ? 'No results found' : `No ${tab} entries`}</div></div>}
 
       {showAdd && (
-        <Modal title="Add Ledger Entry" onClose={() => { setShowAdd(false); setErr(''); setForm({ name: '', type: 'owed', amount: '', note: '', entry_date: today() }) }}>
+        <Modal title="Add Ledger Entry" onClose={() => { setShowAdd(false); setErr(''); setForm({ name: '', type: 'owed', amount: '', note: '', entry_date: today(), due_date: '' }) }}>
           <div className="modal-body">
             <div className="field"><label>Name</label>
               <input type="text" placeholder="Enter name" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} />
@@ -607,6 +640,9 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
             </div>
             <div className="field"><label>Date</label>
               <input type="date" value={form.entry_date} onChange={e => setForm(f => ({...f, entry_date: e.target.value}))} />
+            </div>
+            <div className="field"><label>Due Date (optional)</label>
+              <input type="date" value={form.due_date} onChange={e => setForm(f => ({...f, due_date: e.target.value}))} />
             </div>
             <div className="field"><label>Note (optional)</label>
               <input type="text" placeholder="e.g. April loan" value={form.note} onChange={e => setForm(f => ({...f, note: e.target.value}))} />
@@ -769,6 +805,113 @@ function Personal({ entries, categories, onRefresh }) {
   )
 }
 
+// REPORT
+function Report({ people, transactions, ledger, ledgerTxns, entries, categories }) {
+  const [month, setMonth] = useState(new Date().toISOString().slice(0,7))
+
+  const getRemaining = (entry) => {
+    const txns = ledgerTxns.filter(lt => lt.ledger_id === entry.id)
+    const added = txns.filter(lt => lt.type === 'added').reduce((s, lt) => s + Number(lt.amount), 0)
+    const paid = txns.filter(lt => lt.type === 'paid').reduce((s, lt) => s + Number(lt.amount), 0)
+    return Number(entry.amount) + added - paid
+  }
+
+  const monthEntries = entries.filter(e => e.entry_date && e.entry_date.slice(0,7) === month)
+  const income = monthEntries.filter(e => e.type === 'income').reduce((s,e) => s + Number(e.amount), 0)
+  const expense = monthEntries.filter(e => e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
+
+  const walletTxns = transactions.filter(t => {
+    const d = new Date(t.created_at)
+    const m = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    return m === month
+  })
+  const deposits = walletTxns.filter(t => t.type === 'deposit').reduce((s,t) => s + Number(t.amount), 0)
+  const withdrawals = walletTxns.filter(t => t.type === 'withdraw').reduce((s,t) => s + Number(t.amount), 0)
+
+  const totalWallet = people.reduce((sum, p) => {
+    return sum + transactions.filter(t => t.person_id === p.id)
+      .reduce((s, t) => t.type === 'deposit' ? s + Number(t.amount) : s - Number(t.amount), 0)
+  }, 0)
+
+  const pendingReceive = ledger.filter(l => l.type === 'owed' && l.status !== 'done').reduce((s,l) => s + Math.max(0, getRemaining(l)), 0)
+  const pendingPay = ledger.filter(l => l.type === 'owe' && l.status !== 'done').reduce((s,l) => s + Math.max(0, getRemaining(l)), 0)
+
+  const catTotals = categories.map(c => ({
+    ...c, total: monthEntries.filter(e => e.category_id === c.id && e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
+  })).filter(c => c.total > 0).sort((a,b) => b.total - a.total)
+
+  const handlePrint = () => window.print()
+
+  return (
+    <div className="section" id="report-section">
+      <div className="section-header">
+        <h2 className="section-title">Monthly Report</h2>
+        <button className="btn-primary sm" onClick={handlePrint}>
+          <Icon d={Icons.download} size={14} /> Print / Save PDF
+        </button>
+      </div>
+
+      <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="month-picker" />
+
+      <div className="report-block">
+        <h3 className="report-heading">Personal Finance</h3>
+        <div className="stat-grid">
+          <div className="stat-card success"><div className="stat-label">Income</div><div className="stat-val">{fmt(income)}</div></div>
+          <div className="stat-card danger"><div className="stat-label">Expenses</div><div className="stat-val">{fmt(expense)}</div></div>
+          <div className="stat-card"><div className="stat-label">Net Saving</div><div className={`stat-val ${income-expense >= 0 ? 'success-text':'danger-text'}`}>{fmt(income-expense)}</div></div>
+        </div>
+        {catTotals.length > 0 && <>
+          <h4 className="sub-title" style={{marginTop:'12px'}}>By Category</h4>
+          <div className="card">
+            {catTotals.map(c => (
+              <div key={c.id} className="cat-row">
+                <div className="cat-name">{c.name}</div>
+                <div className="cat-bar-wrap"><div className="cat-bar" style={{width:`${Math.min(100,(c.total/expense)*100)}%`}} /></div>
+                <div className="cat-total">{fmt(c.total)}</div>
+              </div>
+            ))}
+          </div>
+        </>}
+      </div>
+
+      <div className="report-block">
+        <h3 className="report-heading">Wallet Activity</h3>
+        <div className="stat-grid">
+          <div className="stat-card success"><div className="stat-label">Deposits</div><div className="stat-val">{fmt(deposits)}</div></div>
+          <div className="stat-card danger"><div className="stat-label">Withdrawals</div><div className="stat-val">{fmt(withdrawals)}</div></div>
+          <div className="stat-card"><div className="stat-label">Total Wallet</div><div className="stat-val">{fmt(totalWallet)}</div></div>
+        </div>
+        {walletTxns.length > 0 && <>
+          <h4 className="sub-title" style={{marginTop:'12px'}}>Transactions</h4>
+          <div className="card">
+            {walletTxns.sort((a,b) => new Date(b.created_at)-new Date(a.created_at)).map(t => {
+              const person = people.find(p => p.id === t.person_id)
+              return (
+                <div key={t.id} className="txn-row">
+                  <div className={`txn-icon ${t.type}`}><Icon d={t.type==='deposit'?Icons.plus:Icons.minus} size={14} /></div>
+                  <div className="txn-info">
+                    <div className="txn-type">{person?.name || 'Unknown'}</div>
+                    <div className="txn-meta">{fmtDate(t.created_at)}{t.note?` · ${t.note}`:''}</div>
+                  </div>
+                  <div className={`txn-amount ${t.type}`}>{t.type==='deposit'?'+':'-'}{fmt(t.amount)}</div>
+                </div>
+              )
+            })}
+          </div>
+        </>}
+      </div>
+
+      <div className="report-block">
+        <h3 className="report-heading">Ledger Summary</h3>
+        <div className="stat-grid">
+          <div className="stat-card success"><div className="stat-label">To Receive</div><div className="stat-val">{fmt(pendingReceive)}</div></div>
+          <div className="stat-card danger"><div className="stat-label">To Pay</div><div className="stat-val">{fmt(pendingPay)}</div></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // SETTINGS
 function Settings({ dark, setDark, onLogout }) {
   const [showAdminPin, setShowAdminPin] = useState(false)
@@ -893,6 +1036,7 @@ export default function App() {
             { id: 'wallet', label: 'Wallet', icon: Icons.wallet },
             { id: 'ledger', label: 'Ledger', icon: Icons.ledger },
             { id: 'personal', label: 'Personal', icon: Icons.personal },
+            { id: 'report', label: 'Report', icon: Icons.report },
             { id: 'settings', label: 'Settings', icon: Icons.settings },
           ].map(item => (
             <button key={item.id} className={`nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => setActiveTab(item.id)}>
@@ -912,6 +1056,7 @@ export default function App() {
         {activeTab === 'wallet' && <Wallet people={data.people} transactions={data.transactions} onRefresh={fetchAll} />}
         {activeTab === 'ledger' && <Ledger ledger={data.ledger} ledgerTxns={data.ledgerTxns} onRefresh={fetchAll} />}
         {activeTab === 'personal' && <Personal entries={data.personal} categories={data.categories} onRefresh={fetchAll} />}
+        {activeTab === 'report' && <Report people={data.people} transactions={data.transactions} ledger={data.ledger} ledgerTxns={data.ledgerTxns} entries={data.personal} categories={data.categories} />}
         {activeTab === 'settings' && <Settings dark={dark} setDark={setDark} onLogout={() => setAuth(null)} />}
       </main>
       <nav className="bottom-nav">
@@ -920,6 +1065,7 @@ export default function App() {
           { id: 'wallet', label: 'Wallet', icon: Icons.wallet },
           { id: 'ledger', label: 'Ledger', icon: Icons.ledger },
           { id: 'personal', label: 'Personal', icon: Icons.personal },
+          { id: 'report', label: 'Report', icon: Icons.report },
           { id: 'settings', label: 'Settings', icon: Icons.settings },
         ].map(item => (
           <button key={item.id} className={`bottom-nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => setActiveTab(item.id)}>
