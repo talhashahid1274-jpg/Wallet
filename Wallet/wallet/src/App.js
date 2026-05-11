@@ -34,8 +34,8 @@ const Icons = {
 }
 
 const fmt = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`
-const fmtDate = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })
-const fmtDateTime = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+const fmtDate = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' })
+const fmtDateTime = (d) => new Date(d).toLocaleString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Karachi' })
 const today = () => new Date().toISOString().split('T')[0]
 
 function Modal({ title, onClose, children }) {
