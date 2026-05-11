@@ -67,11 +67,12 @@ function LoginScreen({ onAdminLogin, onUserLogin }) {
         if (pin === ADMIN_PIN) { onAdminLogin() }
         else { setErr('Incorrect PIN'); setTimeout(() => { setPin(''); setErr(''); setChecking(false) }, 900) }
       } else {
-        supabase.from('people').select('*').eq('pin', pin).single().then(({ data }) => {
+        supabase.from('people').select('*').eq('pin', pin).single().then(async ({ data }) => {
           if (data) {
-            // Update last_seen timestamp
-            supabase.from('people').update({ last_seen: new Date().toISOString() }).eq('id', data.id)
-            onUserLogin(data)
+            await supabase.from('people').update({ last_seen: new Date().toISOString() }).eq('id', data.id)
+            // Fetch updated record with last_seen
+            const { data: updated } = await supabase.from('people').select('*').eq('id', data.id).single()
+            onUserLogin(updated || data)
           }
           else { setErr('Invalid PIN'); setTimeout(() => { setPin(''); setErr(''); setChecking(false) }, 900) }
         })
