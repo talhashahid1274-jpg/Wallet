@@ -35,6 +35,7 @@ const Icons = {
 
 const fmt = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })
+const fmtDateTime = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const today = () => new Date().toISOString().split('T')[0]
 
 function Modal({ title, onClose, children }) {
@@ -67,7 +68,11 @@ function LoginScreen({ onAdminLogin, onUserLogin }) {
         else { setErr('Incorrect PIN'); setTimeout(() => { setPin(''); setErr(''); setChecking(false) }, 900) }
       } else {
         supabase.from('people').select('*').eq('pin', pin).single().then(({ data }) => {
-          if (data) { onUserLogin(data) }
+          if (data) {
+            // Update last_seen timestamp
+            supabase.from('people').update({ last_seen: new Date().toISOString() }).eq('id', data.id)
+            onUserLogin(data)
+          }
           else { setErr('Invalid PIN'); setTimeout(() => { setPin(''); setErr(''); setChecking(false) }, 900) }
         })
       }
@@ -274,7 +279,17 @@ function Wallet({ people, transactions, onRefresh }) {
   }
 
   if (selected) {
-    const ptxns = [...transactions.filter(t => t.person_id === selected.id)].sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+    // Sort oldest first to calculate running balance, then reverse for display
+    const ptxnsAsc = [...transactions.filter(t => t.person_id === selected.id)].sort((a,b) => new Date(a.created_at) - new Date(b.created_at))
+    // Calculate running balance after each transaction
+    let runningBal = 0
+    const ptxnsWithBalance = ptxnsAsc.map(t => {
+      const before = runningBal
+      runningBal = t.type === 'deposit' ? runningBal + Number(t.amount) : runningBal - Number(t.amount)
+      return { ...t, balanceBefore: before, balanceAfter: runningBal }
+    })
+    // Reverse for display (newest first)
+    const ptxns = [...ptxnsWithBalance].reverse()
     const bal = getBalance(selected.id)
     return (
       <div className="section">
@@ -287,6 +302,10 @@ function Wallet({ people, transactions, onRefresh }) {
               PIN: {selected.pin}
               <button className="pin-change-inline" onClick={() => { setPinForm({newPin:''}); setErr(''); setShowPinChange(true) }}>Change PIN</button>
             </div>
+            {selected.last_seen
+              ? <div className="last-seen-detail">Last seen: {fmtDateTime(selected.last_seen)}</div>
+              : <div className="last-seen-detail">Never logged in</div>
+            }
           </div>
           <button className="btn-icon danger" onClick={() => deletePerson(selected.id)}><Icon d={Icons.trash} size={16} /></button>
         </div>
@@ -305,6 +324,11 @@ function Wallet({ people, transactions, onRefresh }) {
               <div className="txn-info">
                 <div className="txn-type">{t.type === 'deposit' ? 'Deposit' : 'Withdrawal'}</div>
                 <div className="txn-meta">{fmtDate(t.created_at)}{t.note ? ` · ${t.note}` : ''}</div>
+                <div className="txn-balance-trail">
+                  <span className="bal-before">{fmt(t.balanceBefore)}</span>
+                  <span className="bal-arrow">→</span>
+                  <span className="bal-after">{fmt(t.balanceAfter)}</span>
+                </div>
               </div>
               <div className={`txn-amount ${t.type}`}>{t.type === 'deposit' ? '+' : '-'}{fmt(t.amount)}</div>
               <button className="btn-icon sm" onClick={() => deleteTxn(t.id)}><Icon d={Icons.trash} size={13} /></button>
@@ -363,7 +387,11 @@ function Wallet({ people, transactions, onRefresh }) {
               <div className="people-avatar">{p.name.charAt(0)}</div>
               <div className="people-info">
                 <div className="people-name">{p.name}</div>
-                <div className="people-since">Joined {fmtDate(p.created_at)}</div>
+                <div className="people-since">
+                  Joined {fmtDate(p.created_at)}
+                  {p.last_seen && <span className="last-seen"> · Last seen: {fmtDateTime(p.last_seen)}</span>}
+                  {!p.last_seen && <span className="last-seen"> · Never logged in</span>}
+                </div>
               </div>
               <div className={`balance-pill ${bal >= 0 ? 'pos' : 'neg'}`}>{fmt(bal)}</div>
               <Icon d={Icons.arrow} size={16} />
@@ -673,10 +701,6 @@ function Personal({ entries, categories, onRefresh }) {
   const totalExpense = entries.filter(e => e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
   const totalSaving = totalIncome - totalExpense
 
-  const catTotals = categories.map(c => ({
-    ...c, total: monthEntries.filter(e => e.category_id === c.id && e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
-  })).filter(c => c.total > 0).sort((a,b) => b.total - a.total)
-
   const addEntry = async () => {
     if (!form.amount || Number(form.amount) <= 0) { setErr('Valid amount required'); return }
     setLoading(true)
@@ -725,19 +749,6 @@ function Personal({ entries, categories, onRefresh }) {
         <div className="stat-card danger"><div className="stat-label">Expenses</div><div className="stat-val">{fmt(expense)}</div></div>
         <div className="stat-card"><div className="stat-label">Net This Month</div><div className={`stat-val ${income-expense >= 0 ? 'success-text':'danger-text'}`}>{fmt(income-expense)}</div></div>
       </div>
-
-      {catTotals.length > 0 && <>
-        <h4 className="sub-title">Spending by Category</h4>
-        <div className="card" style={{marginBottom:'1.5rem'}}>
-          {catTotals.map(c => (
-            <div key={c.id} className="cat-row">
-              <div className="cat-name"><Icon d={Icons.tag} size={13} /> {c.name}</div>
-              <div className="cat-bar-wrap"><div className="cat-bar" style={{width:`${Math.min(100,(c.total/expense)*100)}%`}} /></div>
-              <div className="cat-total">{fmt(c.total)}</div>
-            </div>
-          ))}
-        </div>
-      </>}
 
       <h4 className="sub-title">Entries</h4>
       <div className="card">
@@ -913,8 +924,20 @@ function Report({ people, transactions, ledger, ledgerTxns, entries, categories 
 }
 
 // SETTINGS
-function Settings({ dark, setDark, onLogout }) {
+function Settings({ dark, setDark, onLogout, people, transactions, ledger, ledgerTxns, entries, categories }) {
+  const [showReport, setShowReport] = useState(false)
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0,7))
   const [showAdminPin, setShowAdminPin] = useState(false)
+
+  // Report calculations
+  const rMonthEntries = entries.filter(e => e.entry_date && e.entry_date.slice(0,7) === reportMonth)
+  const rIncome = rMonthEntries.filter(e => e.type === 'income').reduce((s,e) => s + Number(e.amount), 0)
+  const rExpense = rMonthEntries.filter(e => e.type === 'expense').reduce((s,e) => s + Number(e.amount), 0)
+  const rWalletTxns = transactions.filter(t => { const d = new Date(t.created_at); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` === reportMonth })
+  const rDeposits = rWalletTxns.filter(t => t.type === 'deposit').reduce((s,t) => s + Number(t.amount), 0)
+  const rWithdrawals = rWalletTxns.filter(t => t.type === 'withdraw').reduce((s,t) => s + Number(t.amount), 0)
+  const rTotalWallet = people.reduce((sum, p) => sum + transactions.filter(t => t.person_id === p.id).reduce((s,t) => t.type==='deposit' ? s+Number(t.amount) : s-Number(t.amount), 0), 0)
+  const rCatTotals = categories.map(c => ({ ...c, total: rMonthEntries.filter(e => e.category_id === c.id && e.type === 'expense').reduce((s,e) => s+Number(e.amount), 0) })).filter(c => c.total > 0).sort((a,b) => b.total-a.total)
   const [adminPinForm, setAdminPinForm] = useState({ current: '', newPin: '', confirm: '' })
   const [err, setErr] = useState('')
   const [success, setSuccess] = useState('')
@@ -935,7 +958,46 @@ function Settings({ dark, setDark, onLogout }) {
 
   return (
     <div className="section">
-      <h2 className="section-title">Settings</h2>
+      <h2 className="section-title">More</h2>
+
+      <h4 className="sub-title">Monthly Report</h4>
+      <div className="card" style={{marginBottom:'20px'}}>
+        <div className="settings-row" style={{cursor:'pointer'}} onClick={() => setShowReport(!showReport)}>
+          <div>
+            <div className="settings-label">View Report</div>
+            <div className="settings-sub">Monthly income, expenses & wallet summary</div>
+          </div>
+          <Icon d={Icons.report} size={16} />
+        </div>
+        {showReport && (
+          <div style={{borderTop:'1px solid var(--border)', paddingTop:'16px'}}>
+            <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} className="month-picker" />
+            <div className="stat-grid" style={{marginBottom:'16px'}}>
+              <div className="stat-card success"><div className="stat-label">Income</div><div className="stat-val">{fmt(rIncome)}</div></div>
+              <div className="stat-card danger"><div className="stat-label">Expenses</div><div className="stat-val">{fmt(rExpense)}</div></div>
+              <div className="stat-card"><div className="stat-label">Net Saving</div><div className={`stat-val ${rIncome-rExpense>=0?'success-text':'danger-text'}`}>{fmt(rIncome-rExpense)}</div></div>
+              <div className="stat-card success"><div className="stat-label">Deposits</div><div className="stat-val">{fmt(rDeposits)}</div></div>
+              <div className="stat-card danger"><div className="stat-label">Withdrawals</div><div className="stat-val">{fmt(rWithdrawals)}</div></div>
+              <div className="stat-card"><div className="stat-label">Total Wallet</div><div className="stat-val">{fmt(rTotalWallet)}</div></div>
+            </div>
+            {rCatTotals.length > 0 && <>
+              <h4 className="sub-title">Spending by Category</h4>
+              <div className="card" style={{marginBottom:'12px'}}>
+                {rCatTotals.map(c => (
+                  <div key={c.id} className="cat-row">
+                    <div className="cat-name">{c.name}</div>
+                    <div className="cat-bar-wrap"><div className="cat-bar" style={{width:`${Math.min(100,(c.total/rExpense)*100)}%`}} /></div>
+                    <div className="cat-total">{fmt(c.total)}</div>
+                  </div>
+                ))}
+              </div>
+            </>}
+            <button className="btn-primary sm" onClick={() => window.print()} style={{marginBottom:'8px'}}>
+              Print / Save PDF
+            </button>
+          </div>
+        )}
+      </div>
 
       <h4 className="sub-title">Appearance</h4>
       <div className="card" style={{marginBottom:'20px'}}>
@@ -1036,8 +1098,7 @@ export default function App() {
             { id: 'wallet', label: 'Wallet', icon: Icons.wallet },
             { id: 'ledger', label: 'Ledger', icon: Icons.ledger },
             { id: 'personal', label: 'Personal', icon: Icons.personal },
-            { id: 'report', label: 'Report', icon: Icons.report },
-            { id: 'settings', label: 'Settings', icon: Icons.settings },
+            { id: 'settings', label: 'More', icon: Icons.settings },
           ].map(item => (
             <button key={item.id} className={`nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => setActiveTab(item.id)}>
               <Icon d={item.icon} size={18} /><span>{item.label}</span>
@@ -1056,8 +1117,7 @@ export default function App() {
         {activeTab === 'wallet' && <Wallet people={data.people} transactions={data.transactions} onRefresh={fetchAll} />}
         {activeTab === 'ledger' && <Ledger ledger={data.ledger} ledgerTxns={data.ledgerTxns} onRefresh={fetchAll} />}
         {activeTab === 'personal' && <Personal entries={data.personal} categories={data.categories} onRefresh={fetchAll} />}
-        {activeTab === 'report' && <Report people={data.people} transactions={data.transactions} ledger={data.ledger} ledgerTxns={data.ledgerTxns} entries={data.personal} categories={data.categories} />}
-        {activeTab === 'settings' && <Settings dark={dark} setDark={setDark} onLogout={() => setAuth(null)} />}
+        {activeTab === 'settings' && <Settings dark={dark} setDark={setDark} onLogout={() => setAuth(null)} people={data.people} transactions={data.transactions} ledger={data.ledger} ledgerTxns={data.ledgerTxns} entries={data.personal} categories={data.categories} />}
       </main>
       <nav className="bottom-nav">
         {[
@@ -1065,8 +1125,7 @@ export default function App() {
           { id: 'wallet', label: 'Wallet', icon: Icons.wallet },
           { id: 'ledger', label: 'Ledger', icon: Icons.ledger },
           { id: 'personal', label: 'Personal', icon: Icons.personal },
-          { id: 'report', label: 'Report', icon: Icons.report },
-          { id: 'settings', label: 'Settings', icon: Icons.settings },
+          { id: 'settings', label: 'More', icon: Icons.settings },
         ].map(item => (
           <button key={item.id} className={`bottom-nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => setActiveTab(item.id)}>
             <Icon d={item.icon} size={20} /><span>{item.label}</span>

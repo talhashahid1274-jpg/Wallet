@@ -429,6 +429,17 @@ body {
 }
 .admin-hint-btn:hover { background: var(--border); color: var(--text); }
 
+.last-seen { color: var(--text3); font-size: 11px; }
+.last-seen-detail { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+.txn-balance-trail {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 3px; font-size: 11px; font-family: 'DM Mono', monospace;
+}
+.bal-before { color: var(--text3); }
+.bal-arrow { color: var(--text3); }
+.bal-after { color: var(--text2); font-weight: 500; }
+
 .overdue-row { background: var(--red-bg) !important; border-radius: var(--radius); }
 .overdue-tag {
   display: inline-flex; align-items: center; gap: 3px;
