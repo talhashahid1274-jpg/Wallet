@@ -37,11 +37,12 @@ const fmt = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' })
 const fmtDateTime = (d) => {
   const date = new Date(d)
-  const day = date.getUTCDate()
-  const month = date.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
-  const year = date.getUTCFullYear()
-  let hours = date.getUTCHours()
-  const minutes = String(date.getUTCMinutes()).padStart(2, '0')
+  const pkt = new Date(date.getTime() + (5 * 60 * 60 * 1000))
+  const day = pkt.getUTCDate()
+  const month = pkt.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
+  const year = pkt.getUTCFullYear()
+  let hours = pkt.getUTCHours()
+  const minutes = String(pkt.getUTCMinutes()).padStart(2, '0')
   const ampm = hours >= 12 ? 'PM' : 'AM'
   hours = hours % 12 || 12
   return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`
@@ -79,11 +80,7 @@ function LoginScreen({ onAdminLogin, onUserLogin }) {
       } else {
         supabase.from('people').select('*').eq('pin', pin).single().then(async ({ data }) => {
           if (data) {
-            // Save PKT time directly (UTC+5)
-            const now = new Date()
-            const pkt = new Date(now.getTime() + (5 * 60 * 60 * 1000))
-            const pktStr = pkt.toISOString().replace('T', ' ').replace('Z', '').split('.')[0]
-            await supabase.from('people').update({ last_seen: pktStr }).eq('id', data.id)
+            await supabase.from('people').update({ last_seen: new Date().toISOString() }).eq('id', data.id)
             // Fetch updated record with last_seen
             const { data: updated } = await supabase.from('people').select('*').eq('id', data.id).single()
             onUserLogin(updated || data)
