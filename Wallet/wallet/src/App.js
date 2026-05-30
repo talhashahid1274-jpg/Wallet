@@ -35,7 +35,18 @@ const Icons = {
 
 const fmt = (n) => `Rs ${Number(n).toLocaleString('en-PK')}`
 const fmtDate = (d) => new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' })
-const fmtDateTime = (d) => new Date(d).toLocaleString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Karachi' })
+const fmtDateTime = (d) => {
+  const date = new Date(d)
+  const pkt = new Date(date.getTime() + (5 * 60 * 60 * 1000))
+  const day = pkt.getUTCDate()
+  const month = pkt.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
+  const year = pkt.getUTCFullYear()
+  let hours = pkt.getUTCHours()
+  const minutes = String(pkt.getUTCMinutes()).padStart(2, '0')
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  hours = hours % 12 || 12
+  return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`
+}
 const today = () => new Date().toISOString().split('T')[0]
 
 function Modal({ title, onClose, children }) {
@@ -611,7 +622,7 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
           const overdue = isOverdue(l)
           const daysLeft = getDaysLeft(l)
           return (
-            <div key={l.id} className={`ledger-row${overdue ? ' overdue-row' : ''}`} style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
+            <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
               <div className="ledger-info">
                 <div className="ledger-name">{l.name} {overdue && <span className="overdue-tag">Overdue</span>}</div>
                 <div className="ledger-note">
@@ -634,7 +645,7 @@ function Ledger({ ledger, ledgerTxns, onRefresh }) {
           const overdue = isOverdue(l)
           const daysLeft = getDaysLeft(l)
           return (
-            <div key={l.id} className={`ledger-row${overdue ? ' overdue-row' : ''}`} style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
+            <div key={l.id} className="ledger-row" style={{cursor:'pointer'}} onClick={() => setSelected(l)}>
               <div className="ledger-info">
                 <div className="ledger-name">{l.name} {overdue && <span className="overdue-tag">Overdue</span>}</div>
                 <div className="ledger-note">
